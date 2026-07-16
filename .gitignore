@@ -1,0 +1,10 @@
+# C# / .NET build artifacts
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.nupkg
+*.snupkg
+project.lock.json
+project.assets.json
