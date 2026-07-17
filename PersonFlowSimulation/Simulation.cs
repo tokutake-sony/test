@@ -1,11 +1,14 @@
 namespace PersonFlowSimulation;
 
 /// <summary>
-/// シミュレーション全体を管理します。
-/// Manages the entire simulation.
+/// VRフリーローム体験のシミュレーション全体を管理します。
+/// Manages the entire VR freeroam experience simulation.
 /// </summary>
 public class Simulation
 {
+    /// <summary>1シミュレーションステップが表す実時間 (秒)。Seconds of real time per simulation step.</summary>
+    public const int SecondsPerStep = 60;   // 1ステップ = 1分
+
     public double SpaceWidth { get; }
     public double SpaceHeight { get; }
     public int PersonCount { get; }
@@ -28,19 +31,26 @@ public class Simulation
         _rng = new Random(seed);
         _people = new List<Person>(personCount);
 
-        // 100人をランダムな初期位置に配置
+        // 100人をランダムな初期位置・年齢 (10〜60歳均等) で配置
         for (int i = 0; i < personCount; i++)
         {
             double x = _rng.NextDouble() * spaceWidth;
             double y = _rng.NextDouble() * spaceHeight;
-            _people.Add(new Person(i, x, y, new Random(_rng.Next())));
+
+            // 10〜60歳の範囲で偏りなく年齢を割り当て
+            int age = _rng.Next(10, 61);
+
+            // 1ステップ(1分)あたりの移動距離 = 歩行速度(m/s) × 60秒
+            double stepMeters = Person.GetWalkingSpeedMps(age) * SecondsPerStep;
+
+            _people.Add(new Person(i, age, x, y, new Random(_rng.Next()), stepMeters));
         }
 
         // 初期位置をヒートマップに記録
         RecordPositions();
     }
 
-    /// <summary>1ステップ進めます。</summary>
+    /// <summary>1ステップ進めます（= 1分経過）。</summary>
     public void Step()
     {
         foreach (var person in _people)
@@ -161,9 +171,47 @@ public class Simulation
         double avgY = _people.Average(p => p.Y);
         double stdX = Math.Sqrt(_people.Average(p => (p.X - avgX) * (p.X - avgX)));
         double stdY = Math.Sqrt(_people.Average(p => (p.Y - avgY) * (p.Y - avgY)));
+        double avgSpeed = _people.Average(p => p.WalkingSpeedMps);
+        double avgDist = _people.Average(p => p.DistanceTraveled);
 
-        Console.WriteLine($"  人数: {PersonCount}人  重心: ({avgX:F2}, {avgY:F2})  " +
+        Console.WriteLine($"  人数: {PersonCount}人  経過時間: {CurrentStep}分  重心: ({avgX:F2}, {avgY:F2})  " +
                           $"分散[σ]: X={stdX:F2}m, Y={stdY:F2}m");
+        Console.WriteLine($"  平均歩行速度: {avgSpeed:F2} m/s  " +
+                          $"平均累積移動距離: {avgDist:F0} m");
+    }
+
+    /// <summary>
+    /// 年齢層ごとの人数内訳と歩行速度を表示します。
+    /// Prints participant count and walking speed per age group.
+    /// </summary>
+    public void PrintAgeDistribution()
+    {
+        // 年齢帯の定義
+        var groups = new (string Label, int MinAge, int MaxAge)[]
+        {
+            ("10〜19歳 (Youth)      ", 10, 19),
+            ("20〜29歳 (Young Adult)", 20, 29),
+            ("30〜39歳 (Adult)      ", 30, 39),
+            ("40〜49歳 (Middle-aged)", 40, 49),
+            ("50〜60歳 (Mature)     ", 50, 60),
+        };
+
+        Console.WriteLine("  年齢層         | 人数 | 平均速度 (m/s) | 平均速度 (m/min)");
+        Console.WriteLine("  " + new string('-', 60));
+
+        foreach (var (label, minAge, maxAge) in groups)
+        {
+            var group = _people.Where(p => p.Age >= minAge && p.Age <= maxAge).ToList();
+            int count = group.Count;
+            if (count == 0) continue;
+            double avgSpeedMps = group.Average(p => p.WalkingSpeedMps);
+            double avgSpeedMpm = avgSpeedMps * 60;
+            Console.WriteLine($"  {label} | {count,4} | {avgSpeedMps,14:F2} | {avgSpeedMpm,15:F1}");
+        }
+
+        double overallAvg = _people.Average(p => p.WalkingSpeedMps);
+        Console.WriteLine("  " + new string('-', 60));
+        Console.WriteLine($"  全体平均                      | {PersonCount,4} | {overallAvg,14:F2} | {overallAvg * 60,15:F1}");
     }
 
     // 密度に応じた文字を返します
